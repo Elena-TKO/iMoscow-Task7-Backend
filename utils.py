@@ -71,3 +71,4 @@ def validate_image_file(file) -> None:
         return "large_file"
 
     return True
+
