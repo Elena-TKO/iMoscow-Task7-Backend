@@ -106,7 +106,7 @@ class ImageStore(Base):
     preds_path_image: Mapped[str] = mapped_column(String(255))
     # processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String(255))
-
+    bboxes_mask: Mapped[Optional[str]] = mapped_column(String(255))
     # user: Mapped["User"] = relationship("User", back_populates="image_stores")
 
 

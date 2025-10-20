@@ -14,6 +14,7 @@ from sqlalchemy.orm import sessionmaker
 import config
 from models import ImageStore, Leaf, Tree, TreeResponse, User
 from nets import DiseaseModel, LeafModel, QwenModel, YoloModel
+from utils import addAxis, save_bbox_mask
 
 engine = create_engine(url=f"sqlite:///{config.db_path}", echo=True)
 Session = sessionmaker(bind=engine)
@@ -22,10 +23,14 @@ Session = sessionmaker(bind=engine)
 async def analise_image(file, username="test"):
     image_data = await file.read()
     image = Image.open(io.BytesIO(image_data))
+    max_size = (700, 700)
+    # Изменяем размер с сохранением пропорций
+    image.thumbnail(max_size, Image.LANCZOS)
     image_uuid = uuid.uuid4()
     image_path = os.path.join("data", "files", "images")
     os.makedirs(image_path, exist_ok=True)
     for_bd_path = os.path.join(image_path, f"image_{image_uuid}.png")
+    image = image.convert("RGB")
     image.save(for_bd_path)
     image_np = np.array(image)
 
@@ -101,7 +106,6 @@ async def analise_image(file, username="test"):
                 defects=disease_results,
                 description="DEVELOPING...",
             )
-
             session.add(tree_image_record)
             session.flush()
             path_to_disease_plot = f"data/plots/disease_plot_{tree_image_record.id}.png"
@@ -115,6 +119,7 @@ async def analise_image(file, username="test"):
 
     trees = session.query(Tree).filter(Tree.id.in_(detected_trees_ids)).all()
     add_ids_to_image_pil(image_w_predictions_path, trees)
+    addAxis(image_w_predictions_path, detection["mask"])
     return image_db_id, [TreeResponse.model_validate(tree) for tree in trees], image_w_predictions_path
 
 
@@ -250,6 +255,7 @@ async def process_image_and_mask(image_path: str, mask_path: str, bbox: list, uu
     return filepath
 
 
+
 async def run_vllm(image_id):
     with Session() as session:
         image = session.get(ImageStore, image_id)
@@ -257,11 +263,21 @@ async def run_vllm(image_id):
 
         vllm_model = QwenModel()
         vllm_results = vllm_model.get_description(image_path)
-
+        print('RESULTS', vllm_results)
         image.description = vllm_results["description"]
+        if vllm_results['defects'] != []:
+            bbox_mask_path = save_bbox_mask(image_path, vllm_results['bboxs'], vllm_results['defects'])
+        else:
+            None
+        image.bboxes_mask = bbox_mask_path
         session.commit()
 
     return True
+
+async def get_tree_with_defects(image_id):
+    with Session() as session:
+        image = session.get(ImageStore, image_id)
+        return image.bboxes_mask
 
 
 async def get_image_description(image_id):

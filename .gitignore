@@ -1,0 +1,6 @@
+data/files/
+data/masks/
+__pycache__/
+checker.ipynb
+db.sqlite3
+models/

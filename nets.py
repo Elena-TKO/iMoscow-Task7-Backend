@@ -21,6 +21,16 @@ from ultralytics import YOLO
 
 import config
 
+from pydantic import BaseModel
+from typing import List
+
+
+class VlAnswerSchema(BaseModel):
+    description : str
+    bboxs : List[List[float]]
+    defects : List[str]
+    
+
 
 class LeafModel:
     def __init__(self):
@@ -150,7 +160,7 @@ class DiseaseModel:
         top_predictios = self.get_top5_predictions(model_output=predictions, id2label=self.id2label)
         return top_predictios
 
-    def get_top5_predictions(self, model_output, id2label, use_softmax=True):
+    def get_top5_predictions(self, model_output, id2label, use_softmax=True, threshold=0.1):
         logits = model_output[0]
         if use_softmax:
             probabilities = softmax(logits)
@@ -162,6 +172,8 @@ class DiseaseModel:
         result = {}
         for class_id, prob in top5:
             disease_name = id2label[class_id]
+            if float(prob) < threshold: 
+                continue
             result[disease_name] = float(prob)
         return result
 
@@ -172,11 +184,13 @@ class QwenModel:
                         Есть ли у него болезни, сухие ветки (если есть сухие ветки то примерно оцени их процент от дерева).
                         Если ли опасный наклон у дерева или у его веток.
                         """
+                        
+        self.prompt = config.VL_SYSTEM_PROMPT
 
     def get_description(self, image_path):
         if not os.path.exists(image_path):
             return {'description':'Error! Check HF token in config.py'}
-        return {"description": self.get_output_vl(image_path)}
+        return self.get_output_vl(image_path)
 
     def resize_image_with_aspect_ratio(self, image_path, max_size=1200):
         with Image.open(image_path) as img:
@@ -227,7 +241,7 @@ class QwenModel:
             api_key=config.HF_TOKEN,
         )
 
-        completion = client.chat.completions.create(
+        completion = client.beta.chat.completions.parse(
             model="Qwen/Qwen2.5-VL-72B-Instruct:nebius",
             messages=[
                 {
@@ -238,13 +252,15 @@ class QwenModel:
                     ],
                 }
             ],
+            response_format=VlAnswerSchema,
             frequency_penalty=1,
             max_tokens=1000,
             top_p=0.9,
-            stop=["\n", "###", "---"],
+            # stop=[ "###", "---"],
         )
 
-        return completion.choices[0].message.content.split("\n")[0]
+        result = completion.choices[0].message.content
+        return json.loads(result)
 
     def get_output_vl_saved(self, image_path):
         url = self.prepare_image_to_vlm(image_path)

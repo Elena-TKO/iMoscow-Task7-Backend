@@ -159,6 +159,6 @@ async def get_processing_status(image_id: str):
     """Эндпоинт для проверки статуса обработки"""
     vlm_description = await rq.get_image_description(image_id)
     if vlm_description == config.processing:
-        return {"status": "processing", "description": "generating..."}
+        return {"status": "processing", "description": "generating...", 'vlm_bbox_defect_mask':''}
     else:
-        return {"status": "completed", "description": vlm_description}
+        return {"status": "completed", "description": vlm_description, }
